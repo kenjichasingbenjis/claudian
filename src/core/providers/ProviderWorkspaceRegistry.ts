@@ -38,6 +38,8 @@ export class ProviderWorkspaceRegistry {
 
   static async initializeAll(plugin: ClaudianPlugin): Promise<void> {
     const providerIds = Object.keys(this.registrations) as ProviderId[];
+    if (providerIds.length === 0) return;
+
     const storage = plugin.storage;
     const vaultAdapter = storage.getAdapter();
     const homeAdapter = new HomeFileAdapter();

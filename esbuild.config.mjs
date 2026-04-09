@@ -74,10 +74,42 @@ const copyToObsidian = {
   }
 };
 
+// Wrap Node builtin and SDK requires in try/catch so the plugin can load on
+// Obsidian Mobile where these modules are unavailable. On desktop the real
+// module is returned; on mobile a Proxy that throws on use is returned instead.
+const safeRequireShim = {
+  name: 'safe-require-shim',
+  setup(build) {
+    const SAFE_RE = /^(fs|fs\/promises|os|path|child_process|events|stream|@anthropic-ai\/claude-agent-sdk.*)$/;
+
+    build.onResolve({ filter: SAFE_RE }, (args) => {
+      if (args.importer?.includes('node_modules')) return;
+      return { path: args.path, namespace: 'safe-ext' };
+    });
+
+    build.onLoad({ filter: /.*/, namespace: 'safe-ext' }, (args) => ({
+      contents: [
+        `var m;`,
+        `try { m = require("${args.path}"); } catch(e) { m = null; }`,
+        `module.exports = m || new Proxy({}, {`,
+        `  get(_, k) {`,
+        `    if (k === "__esModule") return false;`,
+        `    if (k === "default") return module.exports;`,
+        `    if (k === "promises") return new Proxy({}, { get(_, k2) { return function() { throw new Error("'${args.path}' unavailable on mobile"); }; } });`,
+        `    if (typeof k === "symbol") return undefined;`,
+        `    return function() { throw new Error("'${args.path}' unavailable on mobile"); };`,
+        `  }`,
+        `});`,
+      ].join('\n'),
+      loader: 'js',
+    }));
+  },
+};
+
 const context = await esbuild.context({
   entryPoints: ['src/main.ts'],
   bundle: true,
-  plugins: [patchCodexSdkImportMeta, copyToObsidian],
+  plugins: [safeRequireShim, patchCodexSdkImportMeta, copyToObsidian],
   external: [
     'obsidian',
     'electron',

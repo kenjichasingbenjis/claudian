@@ -1,5 +1,12 @@
 // Mock for Obsidian API
 
+export const Platform = {
+  isMobile: false,
+  isDesktop: true,
+  isDesktopApp: true,
+  isMobileApp: false,
+};
+
 export class Plugin {
   app: any;
   manifest: any;

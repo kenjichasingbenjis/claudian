@@ -1,11 +1,7 @@
-// Must run before any SDK imports to patch Electron/Node.js realm incompatibility
-import { patchSetMaxListenersForElectron } from './utils/electronCompat';
-patchSetMaxListenersForElectron();
-
 import './providers';
 
 import type { Editor } from 'obsidian';
-import { MarkdownView, Notice, Plugin } from 'obsidian';
+import { MarkdownView, Notice, Platform, Plugin } from 'obsidian';
 
 import { DEFAULT_CLAUDIAN_SETTINGS } from './app/settings/defaultSettings';
 import { SharedStorageService } from './app/storage/SharedStorageService';
@@ -43,6 +39,11 @@ export default class ClaudianPlugin extends Plugin {
   private conversations: Conversation[] = [];
 
   async onload() {
+    if (!Platform.isMobile) {
+      const { patchSetMaxListenersForElectron } = await import('./utils/electronCompat');
+      patchSetMaxListenersForElectron();
+    }
+
     await this.loadSettings();
     await ProviderWorkspaceRegistry.initializeAll(this);
 
