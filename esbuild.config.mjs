@@ -80,10 +80,18 @@ const copyToObsidian = {
 const safeRequireShim = {
   name: 'safe-require-shim',
   setup(build) {
-    const SAFE_RE = /^(fs|fs\/promises|os|path|child_process|events|stream|electron|@anthropic-ai\/claude-agent-sdk.*)$/;
+    // Match all Node builtins (with or without node: prefix), electron, and the Claude SDK.
+    // Obsidian and CodeMirror/Lezer are provided by Obsidian Mobile itself.
+    const safeSet = new Set([
+      ...builtins,
+      ...builtins.map(m => `node:${m}`),
+      'electron',
+    ]);
 
-    build.onResolve({ filter: SAFE_RE }, (args) => {
-      return { path: args.path, namespace: 'safe-ext' };
+    build.onResolve({ filter: /.*/ }, (args) => {
+      if (safeSet.has(args.path) || args.path.startsWith('@anthropic-ai/claude-agent-sdk')) {
+        return { path: args.path, namespace: 'safe-ext' };
+      }
     });
 
     build.onLoad({ filter: /.*/, namespace: 'safe-ext' }, (args) => ({
