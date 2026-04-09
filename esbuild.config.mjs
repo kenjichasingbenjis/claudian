@@ -133,21 +133,7 @@ const patchBareNodeRequires = {
       // os.default.homedir().
       code = code.replace(/__toESM\(__safeReq\("([^"]+)"\)(?:,\s*\d+)?\)/g, '__safeReq("$1")');
 
-      // Wrap the bundle in try/catch so that on mobile, if it crashes during
-      // evaluation, a fallback plugin is exported that shows the error.
-      const errorFallback = [
-        'try {',
-        code,
-        '} catch(__bundleErr) {',
-        '  var __obs = require("obsidian");',
-        '  class __ErrPlugin extends __obs.Plugin {',
-        '    async onload() { new __obs.Notice("Claudian load error: " + __bundleErr.message, 0); }',
-        '  }',
-        '  module.exports = { __esModule: true, default: __ErrPlugin };',
-        '}',
-      ].join('\n');
-
-      await fsPromises.writeFile('main.js', helper + '\n' + errorFallback, 'utf-8');
+      await fsPromises.writeFile('main.js', helper + '\n' + code, 'utf-8');
     });
   },
 };
