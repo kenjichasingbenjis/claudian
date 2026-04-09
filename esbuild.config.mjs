@@ -132,6 +132,11 @@ const patchBareNodeRequires = {
       // Prepend a safe-require helper that wraps require() in try/catch and
       // returns a no-op Proxy on failure (mobile).
       const helper = [
+        // Polyfill Node globals that may be absent on Obsidian Mobile
+        'if (typeof process === "undefined") { var process = { env: {}, platform: "android", cwd: function() { return "/"; }, execPath: "" }; }',
+        'if (typeof Buffer === "undefined") { var Buffer = { alloc: function(n) { return new Uint8Array(n); }, from: function(d, e) { if (typeof d === "string") { var enc = new TextEncoder(); return enc.encode(d); } return new Uint8Array(d); }, concat: function(a) { var len = 0; for (var i = 0; i < a.length; i++) len += a[i].length; var r = new Uint8Array(len); var off = 0; for (var i = 0; i < a.length; i++) { r.set(a[i], off); off += a[i].length; } return r; }, isBuffer: function() { return false; } }; }',
+        'if (typeof global === "undefined") { var global = globalThis; }',
+        '',
         'var __safeReq = function(id) {',
         '  try { return require(id); } catch(e) {',
         '    return new Proxy({}, { get: function(_, k) {',
