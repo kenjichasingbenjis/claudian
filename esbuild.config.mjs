@@ -77,21 +77,23 @@ const copyToObsidian = {
 // Wrap Node builtin and SDK requires in try/catch so the plugin can load on
 // Obsidian Mobile where these modules are unavailable. On desktop the real
 // module is returned; on mobile a Proxy that throws on use is returned instead.
+//
+// Two-phase approach:
+//   Phase 1 (safeRequireShim): esbuild onResolve/onLoad intercepts source-file
+//     imports of Node builtins and the Claude SDK, replacing them with try/catch
+//     wrappers. Only source files are shimmed — node_modules imports pass through
+//     to esbuild's external resolution.
+//   Phase 2 (patchBareNodeRequires): Post-build step that scans main.js for any
+//     remaining bare require("builtin") calls (from bundled node_modules code)
+//     and replaces them with __safeReq("builtin") backed by a try/catch helper.
 const safeRequireShim = {
   name: 'safe-require-shim',
   setup(build) {
-    // Match all Node builtins (with or without node: prefix), electron, and the Claude SDK.
-    // Obsidian and CodeMirror/Lezer are provided by Obsidian Mobile itself.
-    const safeSet = new Set([
-      ...builtins,
-      ...builtins.map(m => `node:${m}`),
-      'electron',
-    ]);
+    const SAFE_RE = /^(fs|fs\/promises|os|path|child_process|events|stream|@anthropic-ai\/claude-agent-sdk.*)$/;
 
-    build.onResolve({ filter: /.*/ }, (args) => {
-      if (safeSet.has(args.path) || args.path.startsWith('@anthropic-ai/claude-agent-sdk')) {
-        return { path: args.path, namespace: 'safe-ext' };
-      }
+    build.onResolve({ filter: SAFE_RE }, (args) => {
+      if (args.importer?.includes('node_modules')) return;
+      return { path: args.path, namespace: 'safe-ext' };
     });
 
     build.onLoad({ filter: /.*/, namespace: 'safe-ext' }, (args) => ({
@@ -113,10 +115,53 @@ const safeRequireShim = {
   },
 };
 
+const patchBareNodeRequires = {
+  name: 'patch-bare-node-requires',
+  setup(build) {
+    const nodeModules = new Set([
+      ...builtins,
+      ...builtins.map(m => `node:${m}`),
+      'electron',
+    ]);
+
+    build.onEnd(async (result) => {
+      if (result.errors.length > 0) return;
+
+      let code = await fsPromises.readFile('main.js', 'utf-8');
+
+      // Prepend a safe-require helper that wraps require() in try/catch and
+      // returns a no-op Proxy on failure (mobile).
+      const helper = [
+        'var __safeReq = function(id) {',
+        '  try { return require(id); } catch(e) {',
+        '    return new Proxy({}, { get: function(_, k) {',
+        '      if (k === "__esModule") return false;',
+        '      if (k === "promises") return new Proxy({}, { get: function(_, k2) { return function() { throw new Error(id + " unavailable on mobile"); }; } });',
+        '      if (typeof k === "symbol") return undefined;',
+        '      return function() { throw new Error(id + " unavailable on mobile"); };',
+        '    } });',
+        '  }',
+        '};',
+      ].join('\n');
+
+      // Replace bare require("node-builtin") with __safeReq("node-builtin").
+      // This catches requires from bundled node_modules that esbuild externalised.
+      code = code.replace(/\brequire\("([^"]+)"\)/g, (match, mod) => {
+        if (nodeModules.has(mod)) {
+          return `__safeReq("${mod}")`;
+        }
+        return match;
+      });
+
+      await fsPromises.writeFile('main.js', helper + '\n' + code, 'utf-8');
+    });
+  },
+};
+
 const context = await esbuild.context({
   entryPoints: ['src/main.ts'],
   bundle: true,
-  plugins: [safeRequireShim, patchCodexSdkImportMeta, copyToObsidian],
+  plugins: [safeRequireShim, patchCodexSdkImportMeta, patchBareNodeRequires, copyToObsidian],
   external: [
     'obsidian',
     'electron',
