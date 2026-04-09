@@ -80,10 +80,9 @@ const copyToObsidian = {
 const safeRequireShim = {
   name: 'safe-require-shim',
   setup(build) {
-    const SAFE_RE = /^(fs|fs\/promises|os|path|child_process|events|stream|@anthropic-ai\/claude-agent-sdk.*)$/;
+    const SAFE_RE = /^(fs|fs\/promises|os|path|child_process|events|stream|electron|@anthropic-ai\/claude-agent-sdk.*)$/;
 
     build.onResolve({ filter: SAFE_RE }, (args) => {
-      if (args.importer?.includes('node_modules')) return;
       return { path: args.path, namespace: 'safe-ext' };
     });
 
