@@ -3,8 +3,8 @@
   "name": "Claudian",
   "version": "2.1.0",
   "minAppVersion": "1.4.5",
-  "description": "Embeds Claude Code as an AI collaborator in your vault. Your vault becomes Claude's working directory, giving it full agentic capabilities: file read/write, search, bash commands, and multi-step workflows.",
-  "author": "Yishen Tu",
-  "authorUrl": "https://github.com/YishenTu",
+  "description": "Mobile-fähige Version von Claudian (Fork von YishenTu). Nutzt auf dem Handy die Anthropic API direkt per fetch, am Desktop den vollen Claude Code CLI.",
+  "author": "kenjichasingbenjis (Fork von Yishen Tu)",
+  "authorUrl": "https://github.com/kenjichasingbenjis/claudian",
   "isDesktopOnly": false
 }
