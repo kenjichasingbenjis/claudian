@@ -74,47 +74,11 @@ const copyToObsidian = {
   }
 };
 
-// Wrap Node builtin and SDK requires in try/catch so the plugin can load on
-// Obsidian Mobile where these modules are unavailable. On desktop the real
-// module is returned; on mobile a Proxy that throws on use is returned instead.
-//
-// Two-phase approach:
-//   Phase 1 (safeRequireShim): esbuild onResolve/onLoad intercepts source-file
-//     imports of Node builtins and the Claude SDK, replacing them with try/catch
-//     wrappers. Only source files are shimmed — node_modules imports pass through
-//     to esbuild's external resolution.
-//   Phase 2 (patchBareNodeRequires): Post-build step that scans main.js for any
-//     remaining bare require("builtin") calls (from bundled node_modules code)
-//     and replaces them with __safeReq("builtin") backed by a try/catch helper.
-const safeRequireShim = {
-  name: 'safe-require-shim',
-  setup(build) {
-    const SAFE_RE = /^(fs|fs\/promises|os|path|child_process|events|stream|@anthropic-ai\/claude-agent-sdk.*)$/;
-
-    build.onResolve({ filter: SAFE_RE }, (args) => {
-      if (args.importer?.includes('node_modules')) return;
-      return { path: args.path, namespace: 'safe-ext' };
-    });
-
-    build.onLoad({ filter: /.*/, namespace: 'safe-ext' }, (args) => ({
-      contents: [
-        `var m;`,
-        `try { m = require("${args.path}"); } catch(e) { m = null; }`,
-        `module.exports = m || new Proxy({}, {`,
-        `  get(_, k) {`,
-        `    if (k === "__esModule") return false;`,
-        `    if (k === "default") return module.exports;`,
-        `    if (k === "promises") return new Proxy({}, { get(_, k2) { return function() { throw new Error("'${args.path}' unavailable on mobile"); }; } });`,
-        `    if (typeof k === "symbol") return undefined;`,
-        `    return function() { throw new Error("'${args.path}' unavailable on mobile"); };`,
-        `  }`,
-        `});`,
-      ].join('\n'),
-      loader: 'js',
-    }));
-  },
-};
-
+// Post-build step: patch all bare require("node-builtin") calls in the output
+// with __safeReq("node-builtin"), backed by a try/catch helper that returns a
+// Proxy on failure (mobile). On desktop, require() succeeds and returns the
+// real module. The __safeReq helper uses require(id) with a variable, so the
+// regex replacement doesn't match it — no circular reference.
 const patchBareNodeRequires = {
   name: 'patch-bare-node-requires',
   setup(build) {
@@ -139,12 +103,17 @@ const patchBareNodeRequires = {
         '',
         'var __safeReq = function(id) {',
         '  try { return require(id); } catch(e) {',
-        '    return new Proxy({}, { get: function(_, k) {',
-        '      if (k === "__esModule") return false;',
-        '      if (k === "promises") return new Proxy({}, { get: function(_, k2) { return function() { throw new Error(id + " unavailable on mobile"); }; } });',
-        '      if (typeof k === "symbol") return undefined;',
-        '      return function() { throw new Error(id + " unavailable on mobile"); };',
-        '    } });',
+        '    var p = new Proxy({}, {',
+        '      getPrototypeOf: function() { return p; },',
+        '      get: function(_, k) {',
+        '        if (k === "__esModule") return false;',
+        '        if (k === "default") return p;',
+        '        if (k === "promises") return new Proxy({}, { getPrototypeOf: function() { return this; }, get: function(_, k2) { return function() { return ""; }; } });',
+        '        if (typeof k === "symbol") return undefined;',
+        '        return function() { return ""; };',
+        '      }',
+        '    });',
+        '    return p;',
         '  }',
         '};',
       ].join('\n');
@@ -180,7 +149,7 @@ const patchBareNodeRequires = {
 const context = await esbuild.context({
   entryPoints: ['src/main.ts'],
   bundle: true,
-  plugins: [safeRequireShim, patchCodexSdkImportMeta, patchBareNodeRequires, copyToObsidian],
+  plugins: [patchCodexSdkImportMeta, patchBareNodeRequires, copyToObsidian],
   external: [
     'obsidian',
     'electron',
