@@ -102,8 +102,8 @@ const patchBareNodeRequires = {
         'if (typeof global === "undefined") { var global = globalThis; }',
         '',
         'var __safeReq = function(id) {',
-        '  try { return require(id); } catch(e) {',
-        '    var p = new Proxy({}, {',
+        '  try { var r = require(id); if (r && typeof r === "object" && Object.keys(r).length > 0) return r; } catch(e) {}',
+        '  var p = new Proxy({}, {',
         '      getPrototypeOf: function() { return p; },',
         '      get: function(_, k) {',
         '        if (k === "__esModule") return false;',
@@ -113,8 +113,7 @@ const patchBareNodeRequires = {
         '        return function() { return ""; };',
         '      }',
         '    });',
-        '    return p;',
-        '  }',
+        '  return p;',
         '};',
       ].join('\n');
 
