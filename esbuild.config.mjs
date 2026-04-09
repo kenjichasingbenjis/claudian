@@ -127,6 +127,13 @@ const patchBareNodeRequires = {
         return match;
       });
 
+      // Strip __toESM wrappers around __safeReq calls. esbuild's __toESM
+      // creates an intermediate object that breaks Proxy property delegation
+      // on mobile WebView. Removing it gives code the module (or Proxy)
+      // directly — safe because source code uses os.homedir(), not
+      // os.default.homedir().
+      code = code.replace(/__toESM\(__safeReq\("([^"]+)"\)(?:,\s*\d+)?\)/g, '__safeReq("$1")');
+
       // Wrap the bundle in try/catch so that on mobile, if it crashes during
       // evaluation, a fallback plugin is exported that shows the error.
       const errorFallback = [
